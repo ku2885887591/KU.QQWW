@@ -3,154 +3,94 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NASA 星空图查询器（永不封禁版）</title>
+<title>NASA 星图时间跳转</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
 </head>
 <body class="bg-slate-900 text-white min-h-screen p-4">
 
-<div class="max-w-2xl mx-auto mt-10 bg-slate-800 rounded-2xl shadow-xl p-6">
+<div class="max-w-md mx-auto mt-12 bg-slate-800 rounded-2xl shadow-xl p-8">
   <h1 class="text-2xl font-bold flex items-center gap-2 mb-6">
     <i class="fa fa-rocket text-blue-400"></i>
-    NASA 星空图查询器
+    NASA 星图时间跳转
   </h1>
 
   <div class="mb-4">
-    <label class="block text-sm text-slate-300 mb-2">输入日期（格式：YYYY-MM-DD）</label>
-    <input
-      type="text"
-      id="dateInput"
-      placeholder="例如：2025-01-15"
-      class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white">
-    <p class="text-xs text-yellow-400 mt-1">有效日期：1995-06-16 至 今天</p>
+    <label class="block text-sm text-slate-300 mb-2">输入日期</label>
+    <input 
+      type="date" 
+      id="date" 
+      class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-white"
+    >
   </div>
 
-  <button id="search" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg px-4 py-3 transition mb-4">
-    <i class="fa fa-search mr-1"></i> 查询该日星空图
+  <div id="tip" class="mb-4 text-xs text-center"></div>
+
+  <button id="go" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg px-4 py-3 transition mb-3">
+    <i class="fa fa-paper-plane mr-1"></i> 前往该日星图
   </button>
 
-  <div id="loading" class="text-center text-blue-400 hidden">正在从 NASA 获取数据...</div>
+  <button id="today" class="w-full bg-slate-700 hover:bg-slate-600 text-white rounded-lg px-4 py-3 transition">
+    <i class="fa fa-calendar-check-o mr-1"></i> 今日最新星图
+  </button>
 
-  <div id="result" class="hidden mt-6 space-y-4">
-    <h2 id="title" class="text-xl font-semibold text-center"></h2>
-    <img id="image" class="w-full rounded-xl shadow-lg max-h-[600px] object-contain">
-
-    <div class="flex gap-3">
-      <a id="downloadBtn" class="flex-1 bg-green-600 text-white text-center py-2 rounded-lg hover:bg-green-500 transition">
-        <i class="fa fa-download mr-1"></i> 下载图片
-      </a>
-      <a id="originalBtn" target="_blank" class="flex-1 bg-orange-600 text-white text-center py-2 rounded-lg hover:bg-orange-500 transition">
-        <i class="fa fa-external-link mr-1"></i> NASA 原页面
-      </a>
-    </div>
-
-    <p id="dateText" class="text-sm text-slate-400 text-center"></p>
-    <div id="explanation" class="text-sm text-slate-300 leading-relaxed bg-slate-700/50 p-4 rounded-lg"></div>
+  <div class="mt-6 text-xs text-slate-400 text-center">
+    <p>📌 星图始于：1995-06-16</p>
+    <p>📌 1995 年之前无星图</p>
   </div>
 </div>
 
 <script>
-const dateInput = document.getElementById('dateInput');
-const searchBtn = document.getElementById('search');
-const loading = document.getElementById('loading');
-const result = document.getElementById('result');
-const title = document.getElementById('title');
-const image = document.getElementById('image');
-const dateText = document.getElementById('dateText');
-const explanation = document.getElementById('explanation');
-const downloadBtn = document.getElementById('downloadBtn');
-const originalBtn = document.getElementById('originalBtn');
+const dateInput = document.getElementById('date');
+const goBtn = document.getElementById('go');
+const todayBtn = document.getElementById('today');
+const tip = document.getElementById('tip');
 
-// ======================= 多 KEY 自动轮询（永不封禁）=======================
-const API_KEYS = [
-  'DEMO_KEY',
-  'AoGzmNQk3w07Vh141XgU5AydVh03QkGwxGdGFI7v',
-  '3kX7H4d1w2GwBcxvG9o12LlZn1x5n2x3BaUCFEfa',
-  'vqLokSj6lK1H4lM4G3nG4qG1kM2aQ7eP7dN1aF2b',
-  'ZrQFH1LmGk4xZl1vLb2nG3pQxVd5aS7fF8zH9jK2l'
-];
+// 默认今天
+const now = new Date();
+const y = now.getFullYear();
+const m = String(now.getMonth()+1).padStart(2,'0');
+const d = String(now.getDate()).padStart(2,'0');
+dateInput.value = `${y}-${m}-${d}`;
 
-let currentKeyIndex = 0;
-
-// 自动取下一个可用 KEY
-function getNextKey() {
-  const key = API_KEYS[currentKeyIndex];
-  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-  return key;
-}
-
-// 带自动重试的请求
-async function fetchWithRetry(date, retryCount = 0) {
-  const apiKey = getNextKey();
-  try {
-    const res = await fetch(`https://api.nasa.gov/planetary/apod?api_key=${apiKey}&date=${date}`);
-    if (!res.ok) throw new Error('请求失败');
-    return await res.json();
-  } catch (e) {
-    if (retryCount < API_KEYS.length) {
-      return fetchWithRetry(date, retryCount + 1);
-    } else {
-      throw new Error('所有API Key均暂时受限，请稍后再试');
-    }
+// 检查年份提示
+dateInput.addEventListener('change', checkDate);
+function checkDate() {
+  const val = dateInput.value;
+  if (!val) return;
+  const year = parseInt(val.split('-')[0]);
+  if (year < 1995) {
+    tip.textContent = "❌ 1995 年之前没有星图！";
+    tip.className = "mb-4 text-xs text-red-400 text-center";
+  } else if (year === 1995) {
+    tip.textContent = "ℹ️ 1995 年仅 6 月 16 日之后有星图";
+    tip.className = "mb-4 text-xs text-yellow-400 text-center";
+  } else {
+    tip.textContent = "✅ 该年份可正常查看星图";
+    tip.className = "mb-4 text-xs text-green-400 text-center";
   }
 }
 
-// =========================================================================
-
-searchBtn.addEventListener('click', async () => {
-  const dateStr = dateInput.value.trim();
-  if (!dateStr) {
-    alert('请输入日期，格式：YYYY-MM-DD');
+// 跳转
+goBtn.addEventListener('click', () => {
+  const v = dateInput.value;
+  if (!v) return alert('请选择日期');
+  const [y, m, d] = v.split('-');
+  if (parseInt(y) < 1995) {
+    alert('1995 年之前没有星图！');
     return;
   }
-
-  const clean = dateStr.replace(/\D/g, '');
-  if (clean.length !== 8) {
-    alert('格式错误！示例：2025-01-15');
-    return;
-  }
-
-  const fixedDate = `${clean.slice(0,4)}-${clean.slice(4,6)}-${clean.slice(6,8)}`;
-
-  const input = new Date(fixedDate);
-  const minDate = new Date('1995-06-16');
-  const now = new Date();
-
-  if (input < minDate) {
-    alert('日期不能早于 1995-06-16');
-    return;
-  }
-  if (input > now) {
-    alert('日期不能是未来的');
-    return;
-  }
-
-  loading.classList.remove('hidden');
-  result.classList.add('hidden');
-
-  try {
-    const data = await fetchWithRetry(fixedDate);
-
-    title.textContent = data.title;
-    dateText.textContent = `日期：${data.date}`;
-    explanation.textContent = data.explanation;
-    image.src = data.url;
-
-    downloadBtn.href = data.url;
-    downloadBtn.download = 'NASA.jpg';
-
-    const yy = fixedDate.slice(2,4);
-    const mm = fixedDate.slice(5,7);
-    const dd = fixedDate.slice(8,10);
-    originalBtn.href = `https://apod.nasa.gov/apod/ap${yy}${mm}${dd}.html`;
-
-    result.classList.remove('hidden');
-  } catch (err) {
-    alert('查询失败：' + err.message);
-  } finally {
-    loading.classList.add('hidden');
-  }
+  const suffix = y.slice(2) + m + d;
+  const url = `https://apod.nasa.gov/apod/ap${suffix}.html`;
+  window.open(url, '_blank');
 });
+
+// 今日
+todayBtn.addEventListener('click', () => {
+  window.open('https://apod.nasa.gov/apod/astropix.html', '_blank');
+});
+
+checkDate();
 </script>
 </body>
 </html>
